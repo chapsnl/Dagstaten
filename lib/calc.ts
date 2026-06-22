@@ -45,3 +45,18 @@ export function calcKassaEntry(
     cashTotaal: round2(cashTotaal),
   };
 }
+
+// Bedragvelden in de UI tonen Nederlandse notatie (komma als decimaalteken).
+// parseAmountInput leest wat de gebruiker typt, formatAmount2 dwingt altijd
+// 2 decimalen af zodra het veld verlaten wordt (325 -> 325,00, 725,50 blijft 725,50).
+export function parseAmountInput(v: string): number {
+  if (!v) return 0;
+  const x = parseFloat(v.replace(",", "."));
+  return Number.isFinite(x) ? x : 0;
+}
+
+export function formatAmount2(v: string): string {
+  if (v.trim() === "") return "";
+  const num = round2(parseAmountInput(v));
+  return num.toFixed(2).replace(".", ",");
+}

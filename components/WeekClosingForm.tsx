@@ -1,8 +1,11 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { round2 } from "@/lib/calc";
+import { parseAmountInput, round2 } from "@/lib/calc";
 import type { WeekCore } from "@/lib/repo/week";
+import AmountInput from "@/components/AmountInput";
+
+type ExpenseRow = { description: string; amount: string };
 
 export default function WeekClosingForm({
   isoYear,
@@ -18,7 +21,7 @@ export default function WeekClosingForm({
   balanceEnd: number | null;
 }) {
   const router = useRouter();
-  const [expenses, setExpenses] = useState(
+  const [expenses, setExpenses] = useState<ExpenseRow[]>(
     core.expenses.length
       ? core.expenses.map((e) => ({ description: e.description, amount: String(e.amount) }))
       : [{ description: "", amount: "" }]
@@ -29,17 +32,11 @@ export default function WeekClosingForm({
   const [depositNote, setDepositNote] = useState(core.depositNote || "");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
-  function n(v: string) {
-    const x = parseFloat(v.replace(",", "."));
-    return Number.isFinite(x) ? x : 0;
-  }
-
-  const expensesTotal = round2(expenses.reduce((s, e) => s + n(e.amount), 0));
+  const expensesTotal = round2(expenses.reduce((s, e) => s + parseAmountInput(e.amount), 0));
   const calculatedDeposit = round2(core.combined.cashTotaal - expensesTotal);
-  const verschil = actualDeposit !== "" ? round2(n(actualDeposit) - calculatedDeposit) : null;
+  const verschil = actualDeposit !== "" ? round2(parseAmountInput(actualDeposit) - calculatedDeposit) : null;
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function saveAll(snapshot: { expenses: ExpenseRow[]; actualDeposit: string; depositNote: string }) {
     setStatus("saving");
     try {
       const res = await fetch("/api/week/save", {
@@ -48,11 +45,11 @@ export default function WeekClosingForm({
         body: JSON.stringify({
           isoYear,
           isoWeek,
-          expenses: expenses
+          expenses: snapshot.expenses
             .filter((x) => x.description || x.amount)
-            .map((x) => ({ description: x.description, amount: n(x.amount) })),
-          actualDeposit: actualDeposit !== "" ? n(actualDeposit) : null,
-          depositNote,
+            .map((x) => ({ description: x.description, amount: parseAmountInput(x.amount) })),
+          actualDeposit: snapshot.actualDeposit !== "" ? parseAmountInput(snapshot.actualDeposit) : null,
+          depositNote: snapshot.depositNote,
         }),
       });
       if (!res.ok) throw new Error("fail");
@@ -63,8 +60,32 @@ export default function WeekClosingForm({
     }
   }
 
+  function updateExpense(idx: number, patch: Partial<ExpenseRow>) {
+    setExpenses((prev) => prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
+  }
+
+  function commitExpense(idx: number, patch: Partial<ExpenseRow>) {
+    const next = expenses.map((row, i) => (i === idx ? { ...row, ...patch } : row));
+    setExpenses(next);
+    void saveAll({ expenses: next, actualDeposit, depositNote });
+  }
+
+  function removeExpense(idx: number) {
+    const next = expenses.filter((_, i) => i !== idx);
+    setExpenses(next);
+    void saveAll({ expenses: next, actualDeposit, depositNote });
+  }
+
+  function commitDeposit(patch: { actualDeposit?: string; depositNote?: string }) {
+    const nextDeposit = patch.actualDeposit ?? actualDeposit;
+    const nextNote = patch.depositNote ?? depositNote;
+    if (patch.actualDeposit !== undefined) setActualDeposit(patch.actualDeposit);
+    if (patch.depositNote !== undefined) setDepositNote(patch.depositNote);
+    void saveAll({ expenses, actualDeposit: nextDeposit, depositNote: nextNote });
+  }
+
   return (
-    <form onSubmit={onSubmit} className="card card-body space-y-4">
+    <div className="card card-body space-y-4">
       <h2 className="font-semibold">Week afsluiten</h2>
 
       <div>
@@ -77,29 +98,17 @@ export default function WeekClosingForm({
                 placeholder="Omschrijving"
                 className="field-input flex-1"
                 value={row.description}
-                onChange={(e) => {
-                  const copy = [...expenses];
-                  copy[idx] = { ...copy[idx], description: e.target.value };
-                  setExpenses(copy);
-                }}
+                onChange={(e) => updateExpense(idx, { description: e.target.value })}
+                onBlur={(e) => commitExpense(idx, { description: e.target.value })}
               />
-              <input
-                type="text"
-                inputMode="decimal"
+              <AmountInput
                 placeholder="bedrag"
                 className="field-input w-32 text-right"
                 value={row.amount}
-                onChange={(e) => {
-                  const copy = [...expenses];
-                  copy[idx] = { ...copy[idx], amount: e.target.value };
-                  setExpenses(copy);
-                }}
+                onChange={(v) => updateExpense(idx, { amount: v })}
+                onCommit={(formatted) => commitExpense(idx, { amount: formatted })}
               />
-              <button
-                type="button"
-                className="text-red-600 text-sm px-2"
-                onClick={() => setExpenses(expenses.filter((_, i) => i !== idx))}
-              >
+              <button type="button" className="text-red-600 text-sm px-2" onClick={() => removeExpense(idx)}>
                 verwijder
               </button>
             </div>
@@ -127,12 +136,11 @@ export default function WeekClosingForm({
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label">Werkelijk afgestort bedrag (&euro;)</label>
-          <input
-            type="text"
-            inputMode="decimal"
+          <AmountInput
             className="field-input w-full"
             value={actualDeposit}
-            onChange={(e) => setActualDeposit(e.target.value)}
+            onChange={(v) => setActualDeposit(v)}
+            onCommit={(formatted) => commitDeposit({ actualDeposit: formatted })}
           />
         </div>
         <div>
@@ -142,6 +150,7 @@ export default function WeekClosingForm({
             className="field-input w-full"
             value={depositNote}
             onChange={(e) => setDepositNote(e.target.value)}
+            onBlur={(e) => commitDeposit({ depositNote: e.target.value })}
           />
         </div>
       </div>
@@ -154,10 +163,10 @@ export default function WeekClosingForm({
 
       <div className="panel-dark grid grid-cols-2 gap-4 text-sm">
         <div>Kassaldo begin week</div>
-        <div className="text-right">{balanceStart !== null ? `\u20ac${balanceStart.toFixed(2)}` : "-"}</div>
+        <div className="text-right">{balanceStart !== null ? `€${balanceStart.toFixed(2)}` : "-"}</div>
         <div className="font-semibold">Kassaldo eind week</div>
         <div className="text-right font-semibold">
-          {balanceEnd !== null ? `\u20ac${balanceEnd.toFixed(2)}` : "-"}
+          {balanceEnd !== null ? `€${balanceEnd.toFixed(2)}` : "-"}
         </div>
       </div>
       {balanceStart === null && (
@@ -167,13 +176,14 @@ export default function WeekClosingForm({
         </p>
       )}
 
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={status === "saving"} className="btn-save">
-          {status === "saving" ? "Opslaan..." : "Opslaan"}
-        </button>
-        {status === "saved" && <span className="text-emerald-600 text-sm">Opgeslagen.</span>}
-        {status === "error" && <span className="text-red-600 text-sm">Opslaan mislukt.</span>}
+      <div className="text-sm h-5">
+        {status === "saving" && <span className="text-slate-500">Bezig met opslaan...</span>}
+        {status === "saved" && <span className="text-emerald-600">Opgeslagen.</span>}
+        {status === "error" && <span className="text-red-600">Opslaan mislukt - controleer je internetverbinding.</span>}
+        {status === "idle" && (
+          <span className="text-slate-400">Wijzigingen worden automatisch opgeslagen zodra je een veld verlaat.</span>
+        )}
       </div>
-    </form>
+    </div>
   );
 }

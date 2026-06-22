@@ -1,7 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
-import { calcKassaEntry, round2 } from "@/lib/calc";
+import { calcKassaEntry, parseAmountInput, round2 } from "@/lib/calc";
 import { Settings } from "@/lib/types";
+import AmountInput from "@/components/AmountInput";
 
 interface DayKassaView {
   kassaId: number;
@@ -31,9 +32,20 @@ type RowState = {
   note: string;
 };
 
-function n(v: string): number {
-  const x = parseFloat(v.replace(",", "."));
-  return Number.isFinite(x) ? x : 0;
+function initialRows(view: DayView): Record<number, RowState> {
+  const init: Record<number, RowState> = {};
+  for (const b of view.perBusiness) {
+    for (const k of b.kassas) {
+      init[k.kassaId] = {
+        pinDeviceId: k.pinDeviceId,
+        pinAmount: k.pinAmount ? String(k.pinAmount) : "",
+        omzetIncl21: k.omzetIncl21 ? String(k.omzetIncl21) : "",
+        omzetIncl9: k.omzetIncl9 ? String(k.omzetIncl9) : "",
+        note: k.note || "",
+      };
+    }
+  }
+  return init;
 }
 
 export default function DayEntryForm({
@@ -45,26 +57,48 @@ export default function DayEntryForm({
   view: DayView;
   settings: Settings;
 }) {
-  const [rows, setRows] = useState<Record<number, RowState>>(() => {
-    const init: Record<number, RowState> = {};
-    for (const b of view.perBusiness) {
-      for (const k of b.kassas) {
-        init[k.kassaId] = {
-          pinDeviceId: k.pinDeviceId,
-          pinAmount: k.pinAmount ? String(k.pinAmount) : "",
-          omzetIncl21: k.omzetIncl21 ? String(k.omzetIncl21) : "",
-          omzetIncl9: k.omzetIncl9 ? String(k.omzetIncl9) : "",
-          note: k.note || "",
-        };
-      }
-    }
-    return init;
-  });
+  const [rows, setRows] = useState<Record<number, RowState>>(() => initialRows(view));
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
+  // Tijdens typen: alleen lokale state bijwerken (voor de live berekening).
   function update(kassaId: number, patch: Partial<RowState>) {
     setRows((prev) => ({ ...prev, [kassaId]: { ...prev[kassaId], ...patch } }));
-    setStatus("idle");
+  }
+
+  // Bij het verlaten van een veld (of een directe keuze zoals het PIN-apparaat):
+  // meteen opslaan, zodat je nooit data verliest door weg te klikken.
+  function commit(kassaId: number, patch: Partial<RowState>) {
+    const next = { ...rows, [kassaId]: { ...rows[kassaId], ...patch } };
+    setRows(next);
+    void saveAll(next);
+  }
+
+  async function saveAll(snapshot: Record<number, RowState>) {
+    setStatus("saving");
+    const entries = view.perBusiness.flatMap((b) =>
+      b.kassas.map((k) => {
+        const r = snapshot[k.kassaId];
+        return {
+          kassaId: k.kassaId,
+          pinDeviceId: r.pinDeviceId,
+          pinAmount: parseAmountInput(r.pinAmount),
+          omzetIncl21: parseAmountInput(r.omzetIncl21),
+          omzetIncl9: parseAmountInput(r.omzetIncl9),
+          note: r.note,
+        };
+      })
+    );
+    try {
+      const res = await fetch("/api/day/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, entries }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      setStatus("saved");
+    } catch {
+      setStatus("error");
+    }
   }
 
   const calcByKassa = useMemo(() => {
@@ -73,9 +107,9 @@ export default function DayEntryForm({
       for (const k of b.kassas) {
         const r = rows[k.kassaId];
         out[k.kassaId] = calcKassaEntry(
-          n(r.pinAmount),
-          n(r.omzetIncl21),
-          n(r.omzetIncl9),
+          parseAmountInput(r.pinAmount),
+          parseAmountInput(r.omzetIncl21),
+          parseAmountInput(r.omzetIncl9),
           settings.vat_rate_high,
           settings.vat_rate_low
         );
@@ -106,37 +140,8 @@ export default function DayEntryForm({
     };
   }, [calcByKassa]);
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setStatus("saving");
-    const entries = view.perBusiness.flatMap((b) =>
-      b.kassas.map((k) => {
-        const r = rows[k.kassaId];
-        return {
-          kassaId: k.kassaId,
-          pinDeviceId: r.pinDeviceId,
-          pinAmount: n(r.pinAmount),
-          omzetIncl21: n(r.omzetIncl21),
-          omzetIncl9: n(r.omzetIncl9),
-          note: r.note,
-        };
-      })
-    );
-    try {
-      const res = await fetch("/api/day/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, entries }),
-      });
-      if (!res.ok) throw new Error("save failed");
-      setStatus("saved");
-    } catch {
-      setStatus("error");
-    }
-  }
-
   return (
-    <form onSubmit={onSubmit} className="space-y-8">
+    <div className="space-y-8">
       {view.perBusiness.map((b) => (
         <div key={b.businessId} className="card">
           <div className="card-header">{b.businessName}</div>
@@ -167,7 +172,7 @@ export default function DayEntryForm({
                           <select
                             className="field-input w-full"
                             value={r.pinDeviceId ?? ""}
-                            onChange={(e) => update(k.kassaId, { pinDeviceId: Number(e.target.value) })}
+                            onChange={(e) => commit(k.kassaId, { pinDeviceId: Number(e.target.value) })}
                           >
                             {k.availablePinDevices.map((d) => (
                               <option key={d.id} value={d.id}>
@@ -181,30 +186,27 @@ export default function DayEntryForm({
                         )}
                       </td>
                       <td>
-                        <input
-                          type="text"
-                          inputMode="decimal"
+                        <AmountInput
                           className="field-input w-24 text-right"
                           value={r.pinAmount}
-                          onChange={(e) => update(k.kassaId, { pinAmount: e.target.value })}
+                          onChange={(v) => update(k.kassaId, { pinAmount: v })}
+                          onCommit={(formatted) => commit(k.kassaId, { pinAmount: formatted })}
                         />
                       </td>
                       <td>
-                        <input
-                          type="text"
-                          inputMode="decimal"
+                        <AmountInput
                           className="field-input w-24 text-right"
                           value={r.omzetIncl21}
-                          onChange={(e) => update(k.kassaId, { omzetIncl21: e.target.value })}
+                          onChange={(v) => update(k.kassaId, { omzetIncl21: v })}
+                          onCommit={(formatted) => commit(k.kassaId, { omzetIncl21: formatted })}
                         />
                       </td>
                       <td>
-                        <input
-                          type="text"
-                          inputMode="decimal"
+                        <AmountInput
                           className="field-input w-24 text-right"
                           value={r.omzetIncl9}
-                          onChange={(e) => update(k.kassaId, { omzetIncl9: e.target.value })}
+                          onChange={(v) => update(k.kassaId, { omzetIncl9: v })}
+                          onCommit={(formatted) => commit(k.kassaId, { omzetIncl9: formatted })}
                         />
                       </td>
                       <td className="text-right text-slate-600">&euro; {c.btw21.toFixed(2)}</td>
@@ -243,13 +245,16 @@ export default function DayEntryForm({
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={status === "saving"} className="btn-save">
-          {status === "saving" ? "Opslaan..." : "Opslaan"}
-        </button>
-        {status === "saved" && <span className="text-emerald-600 text-sm">Opgeslagen.</span>}
-        {status === "error" && <span className="text-red-600 text-sm">Opslaan mislukt, probeer opnieuw.</span>}
+      <div className="text-sm h-5">
+        {status === "saving" && <span className="text-slate-500">Bezig met opslaan...</span>}
+        {status === "saved" && <span className="text-emerald-600">Opgeslagen.</span>}
+        {status === "error" && (
+          <span className="text-red-600">Opslaan mislukt - controleer je internetverbinding.</span>
+        )}
+        {status === "idle" && (
+          <span className="text-slate-400">Wijzigingen worden automatisch opgeslagen zodra je een veld verlaat.</span>
+        )}
       </div>
-    </form>
+    </div>
   );
 }

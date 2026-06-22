@@ -2,12 +2,14 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { getMeta } from "@/lib/repo/meta";
+import AmountInput from "@/components/AmountInput";
 
 type Meta = Awaited<ReturnType<typeof getMeta>>;
 
 export default function SettingsForm({ meta }: { meta: Meta }) {
   const router = useRouter();
   const [settings, setSettings] = useState(meta.settings);
+  const [startkas, setStartkas] = useState(String(meta.settings.starting_cash_float));
   const [savingSettings, setSavingSettings] = useState(false);
   const [newKassa, setNewKassa] = useState<Record<number, { code: string; name: string }>>({});
   const [newReserveName, setNewReserveName] = useState("");
@@ -79,14 +81,17 @@ export default function SettingsForm({ meta }: { meta: Meta }) {
           <div />
           <div>
             <label className="field-label">Startkas (vlottende kas) &euro;</label>
-            <input
-              type="text"
-              inputMode="decimal"
+            <AmountInput
               className="field-input w-full"
-              value={settings.starting_cash_float}
-              onChange={(e) =>
-                setSettings({ ...settings, starting_cash_float: parseFloat(e.target.value) || 0 })
-              }
+              value={startkas}
+              onChange={setStartkas}
+              onCommit={(formatted) => {
+                setStartkas(formatted);
+                setSettings({
+                  ...settings,
+                  starting_cash_float: parseFloat(formatted.replace(",", ".")) || 0,
+                });
+              }}
             />
           </div>
           <div>
