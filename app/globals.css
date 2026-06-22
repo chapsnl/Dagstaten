@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+/*
+  Centrale stylesheet voor de hele app. Dit zijn alleen de bestaande,
+  al-overal-gebruikte stijlcombinaties (kaarten, knoppen, velden, koppen)
+  onder een eigen klassenaam, opgebouwd met @apply zodat ze precies dezelfde
+  Tailwind-utilities gebruiken als voorheen - er verandert dus niets aan het
+  uiterlijk, alleen de plek waar het gedefinieerd staat.
+*/
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+input[type="number"], input[type="text"], input[type="date"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Paginakoppen (titel + ondertitel boven elke pagina) */
+.page-title {
+  @apply text-xl font-semibold;
+}
+.page-subtitle {
+  @apply text-sm text-slate-600;
+}
+
+/* Witte kaart met rand en afgeronde hoeken, met optioneel een grijze
+   kopregel (.card-header) of gewone padding (.card-body). */
+.card {
+  @apply bg-white rounded-lg border border-slate-200 overflow-hidden;
+}
+.card-header {
+  @apply bg-slate-100 px-4 py-2 font-semibold;
+}
+.card-body {
+  @apply p-4;
+}
+
+/* Donker / groen statuspaneel (totalen, kassaldo, BTW-samenvatting) */
+.panel-dark {
+  @apply bg-slate-900 text-white rounded-lg px-4 py-3;
+}
+.panel-highlight {
+  @apply bg-emerald-700 text-white rounded-lg p-4;
+}
+
+/* Knoppen */
+.btn {
+  @apply px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 text-sm;
+}
+.btn-dark {
+  @apply px-4 py-2 rounded bg-slate-900 text-white hover:bg-slate-700;
+}
+.btn-save {
+  @apply px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50;
+}
+
+/* Formuliervelden */
+.field-input {
+  @apply border border-slate-300 rounded px-2 py-1;
+}
+.field-label {
+  @apply block text-sm text-slate-600 mb-1;
+}
+
+table.fin {
+  border-collapse: collapse;
+  width: 100%;
+}
+table.fin th, table.fin td {
+  border: 1px solid #e2e8f0;
+  padding: 4px 8px;
+  font-size: 0.875rem;
+}
+table.fin th {
+  background: #f1f5f9;
+  text-align: left;
+}

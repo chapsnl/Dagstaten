@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Netlify herkent Next.js automatisch (App Router, server components, route
+# handlers) en zet de juiste serverless functions neer - geen extra plugin-
+# configuratie nodig. Omgevingsvariabelen (DATABASE_URL, SITE_PASSWORD) stel je
+# in via Site settings > Environment variables in het Netlify-dashboard, niet
+# hier (dit bestand wordt mee naar GitHub gepusht).
