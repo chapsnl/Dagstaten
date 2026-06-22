@@ -9,7 +9,7 @@ import {
   isoWeekInfoForDate,
   compareIsoWeek,
 } from "@/lib/dateUtils";
-import { DailyEntryRow, WeekExpenseRow } from "@/lib/types";
+import { Business, DailyEntryRow, Kassa, Settings, WeekExpenseRow } from "@/lib/types";
 import { addDays } from "date-fns";
 
 export interface WeekCore {
@@ -49,18 +49,45 @@ export interface WeekCore {
   isClosed: boolean;
 }
 
-export async function computeWeekCore(isoYear: number, isoWeek: number): Promise<WeekCore> {
+interface WeekRef {
+  isoYear: number;
+  isoWeek: number;
+}
+
+interface WeekMeta {
+  settings: Settings;
+  businesses: Business[];
+  kassas: Kassa[];
+}
+
+interface DepositRow {
+  iso_year: number;
+  iso_week: number;
+  actual_amount: number | null;
+  note: string | null;
+}
+
+async function loadMeta(): Promise<WeekMeta> {
   const [settings, businesses, kassas] = await Promise.all([
     getSettings(),
     getBusinesses(),
     getKassas(),
   ]);
-  const dates = datesOfIsoWeek(isoYear, isoWeek).map(formatISO);
+  return { settings, businesses, kassas };
+}
 
-  const entries = await queryRows<DailyEntryRow>(
-    "SELECT * FROM daily_entries WHERE date = ANY($1::date[])",
-    [dates]
-  );
+// Bouwt een WeekCore op uit al-opgehaalde data (geen eigen DB-calls). Wordt gebruikt
+// door zowel de losse computeWeekCore (1 week) als de batch-variant hieronder
+// (meerdere weken in een handvol queries, voor het kwartaal-/jaaroverzicht).
+function buildWeekCore(
+  ref: WeekRef,
+  meta: WeekMeta,
+  entriesForWeek: DailyEntryRow[],
+  expensesForWeek: WeekExpenseRow[],
+  depositForWeek: DepositRow | null
+): WeekCore {
+  const { settings, businesses, kassas } = meta;
+  const dates = datesOfIsoWeek(ref.isoYear, ref.isoWeek).map(formatISO);
 
   const businessResults = businesses.map((b) => {
     const businessKassas = kassas.filter((k) => k.business_id === b.id);
@@ -73,7 +100,7 @@ export async function computeWeekCore(isoYear: number, isoWeek: number): Promise
     const perDag = dates.map((date) => ({
       date,
       kassas: businessKassas.map((k) => {
-        const entry = entries.find((e) => e.date === date && e.kassa_id === k.id);
+        const entry = entriesForWeek.find((e) => e.date === date && e.kassa_id === k.id);
         const pinAmount = entry?.pin_amount ?? 0;
         const omzetIncl21 = entry?.omzet_incl21 ?? 0;
         const omzetIncl9 = entry?.omzet_incl9 ?? 0;
@@ -127,25 +154,15 @@ export async function computeWeekCore(isoYear: number, isoWeek: number): Promise
     { turnoverInclBtw: 0, btw21: 0, btw9: 0, pinTotal: 0, cashTotaal: 0 }
   );
 
-  const expenses = await queryRows<WeekExpenseRow>(
-    "SELECT * FROM week_expenses WHERE iso_year = $1 AND iso_week = $2 ORDER BY sort_order, id",
-    [isoYear, isoWeek]
-  );
-  const expensesTotal = round2(expenses.reduce((s, e) => s + e.amount, 0));
-
-  const depositRow = await queryOne<{ actual_amount: number | null; note: string | null }>(
-    "SELECT actual_amount, note FROM week_deposits WHERE iso_year = $1 AND iso_week = $2",
-    [isoYear, isoWeek]
-  );
-
+  const expensesTotal = round2(expensesForWeek.reduce((s, e) => s + e.amount, 0));
   const calculatedDeposit = round2(combined.cashTotaal - expensesTotal);
-  const actualDeposit = depositRow?.actual_amount ?? null;
+  const actualDeposit = depositForWeek?.actual_amount ?? null;
   const verschilDeposit = actualDeposit !== null ? round2(actualDeposit - calculatedDeposit) : null;
 
-  const monday = mondayOfIsoWeek(isoYear, isoWeek);
+  const monday = mondayOfIsoWeek(ref.isoYear, ref.isoWeek);
   return {
-    isoYear,
-    isoWeek,
+    isoYear: ref.isoYear,
+    isoWeek: ref.isoWeek,
     weekStart: formatISO(monday),
     weekEnd: formatISO(addDays(monday, 6)),
     businesses: businessResults,
@@ -156,14 +173,61 @@ export async function computeWeekCore(isoYear: number, isoWeek: number): Promise
       pinTotal: round2(combined.pinTotal),
       cashTotaal: round2(combined.cashTotaal),
     },
-    expenses,
+    expenses: expensesForWeek,
     expensesTotal,
     actualDeposit,
-    depositNote: depositRow?.note ?? null,
+    depositNote: depositForWeek?.note ?? null,
     calculatedDeposit,
     verschilDeposit,
     isClosed: actualDeposit !== null,
   };
+}
+
+export async function computeWeekCore(isoYear: number, isoWeek: number): Promise<WeekCore> {
+  const meta = await loadMeta();
+  const dates = datesOfIsoWeek(isoYear, isoWeek).map(formatISO);
+  const [entries, expenses, depositRow] = await Promise.all([
+    queryRows<DailyEntryRow>("SELECT * FROM daily_entries WHERE date = ANY($1::date[])", [dates]),
+    queryRows<WeekExpenseRow>(
+      "SELECT * FROM week_expenses WHERE iso_year = $1 AND iso_week = $2 ORDER BY sort_order, id",
+      [isoYear, isoWeek]
+    ),
+    queryOne<DepositRow>("SELECT * FROM week_deposits WHERE iso_year = $1 AND iso_week = $2", [isoYear, isoWeek]),
+  ]);
+  return buildWeekCore({ isoYear, isoWeek }, meta, entries, expenses, depositRow);
+}
+
+// Haalt meerdere weken in een handvol queries op (1x daily_entries over de hele
+// datumrange, 1x week_expenses en 1x week_deposits over de betrokken jaren) in
+// plaats van per week apart te bevragen. Voorkomt honderden losse round-trips
+// naar de database bij het kwartaal-/jaaroverzicht.
+export async function computeWeekCoreRange(weekRefs: WeekRef[]): Promise<Map<string, WeekCore>> {
+  const map = new Map<string, WeekCore>();
+  if (weekRefs.length === 0) return map;
+
+  const meta = await loadMeta();
+  const allDates = weekRefs.flatMap((r) => datesOfIsoWeek(r.isoYear, r.isoWeek).map(formatISO));
+  const minDate = allDates.reduce((a, b) => (a < b ? a : b));
+  const maxDate = allDates.reduce((a, b) => (a > b ? a : b));
+  const years = Array.from(new Set(weekRefs.map((r) => r.isoYear)));
+
+  const [entries, expenses, deposits] = await Promise.all([
+    queryRows<DailyEntryRow>("SELECT * FROM daily_entries WHERE date >= $1 AND date <= $2", [minDate, maxDate]),
+    queryRows<WeekExpenseRow & { iso_year: number; iso_week: number }>(
+      "SELECT * FROM week_expenses WHERE iso_year = ANY($1::int[]) ORDER BY iso_year, iso_week, sort_order, id",
+      [years]
+    ),
+    queryRows<DepositRow>("SELECT * FROM week_deposits WHERE iso_year = ANY($1::int[])", [years]),
+  ]);
+
+  for (const ref of weekRefs) {
+    const dateSet = new Set(datesOfIsoWeek(ref.isoYear, ref.isoWeek).map(formatISO));
+    const weekEntries = entries.filter((e) => dateSet.has(e.date));
+    const weekExpenses = expenses.filter((e) => e.iso_year === ref.isoYear && e.iso_week === ref.isoWeek);
+    const weekDeposit = deposits.find((d) => d.iso_year === ref.isoYear && d.iso_week === ref.isoWeek) ?? null;
+    map.set(`${ref.isoYear}-${ref.isoWeek}`, buildWeekCore(ref, meta, weekEntries, weekExpenses, weekDeposit));
+  }
+  return map;
 }
 
 export async function saveWeekExpenses(
@@ -204,19 +268,29 @@ export interface RunningBalanceEntry extends WeekCore {
 // Loopt chronologisch vanaf de startdatum van de kasstand t/m de doelweek en bouwt
 // het lopende kassaldo op (zelfde logica als de "Kas"-kolom in de oude kwartaalstaat,
 // met dit verschil dat hier het WERKELIJK afgestorte bedrag wordt gebruikt zodra dat
-// is ingevoerd, zodat eventuele verschillen direct zichtbaar worden).
+// is ingevoerd, zodat eventuele verschillen direct zichtbaar worden). Haalt alle
+// betrokken weken in een keer op (computeWeekCoreRange) in plaats van week voor week.
 export async function runningBalanceUpTo(targetYear: number, targetWeek: number): Promise<RunningBalanceEntry[]> {
   const settings = await getSettings();
   const start = isoWeekInfoForDateStr(settings.starting_cash_float_date || formatISO(new Date()));
-  let cursor = { isoYear: start.isoYear, isoWeek: start.isoWeek };
   const target = { isoYear: targetYear, isoWeek: targetWeek };
 
-  const result: RunningBalanceEntry[] = [];
-  let balance = settings.starting_cash_float;
+  const weekRefs: WeekRef[] = [];
+  let cursor = { isoYear: start.isoYear, isoWeek: start.isoWeek };
   let safety = 0;
   while (compareIsoWeek(cursor, target) <= 0 && safety < 600) {
     safety += 1;
-    const core = await computeWeekCore(cursor.isoYear, cursor.isoWeek);
+    weekRefs.push(cursor);
+    const nextMonday = addDays(mondayOfIsoWeek(cursor.isoYear, cursor.isoWeek), 7);
+    const info = isoWeekInfoForDate(nextMonday);
+    cursor = { isoYear: info.isoYear, isoWeek: info.isoWeek };
+  }
+
+  const coreMap = await computeWeekCoreRange(weekRefs);
+  const result: RunningBalanceEntry[] = [];
+  let balance = settings.starting_cash_float;
+  for (const ref of weekRefs) {
+    const core = coreMap.get(`${ref.isoYear}-${ref.isoWeek}`)!;
     const depositUsed = core.actualDeposit ?? core.calculatedDeposit;
     const balanceStart = balance;
     const balanceEnd = round2(
@@ -224,10 +298,6 @@ export async function runningBalanceUpTo(targetYear: number, targetWeek: number)
     );
     result.push({ ...core, balanceStart, balanceEnd });
     balance = balanceEnd;
-
-    const nextMonday = addDays(mondayOfIsoWeek(cursor.isoYear, cursor.isoWeek), 7);
-    const info = isoWeekInfoForDate(nextMonday);
-    cursor = { isoYear: info.isoYear, isoWeek: info.isoWeek };
   }
   return result;
 }

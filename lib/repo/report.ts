@@ -1,5 +1,5 @@
 import { weeksInQuarter, MAAND_NAMEN } from "@/lib/dateUtils";
-import { computeWeekCore, runningBalanceUpTo, WeekCore } from "@/lib/repo/week";
+import { computeWeekCoreRange, runningBalanceUpTo, WeekCore } from "@/lib/repo/week";
 import { getSettings } from "@/lib/repo/meta";
 import { round2 } from "@/lib/calc";
 
@@ -107,13 +107,13 @@ export async function getQuarterReport(year: number, quarter: number): Promise<Q
     return { year, quarter, months: [], totals: empty, kasEindstand: null, teBetalenBtw: 0 };
   }
   const last = weekRefs[weekRefs.length - 1];
-  const [balanceMap, cores] = await Promise.all([
+  const [balanceMap, coreMap] = await Promise.all([
     balanceMapUpTo(last.isoYear, last.isoWeek),
-    Promise.all(weekRefs.map((ref) => computeWeekCore(ref.isoYear, ref.isoWeek))),
+    computeWeekCoreRange(weekRefs),
   ]);
 
-  const rows = weekRefs.map((ref, idx) => {
-    const core = cores[idx];
+  const rows = weekRefs.map((ref) => {
+    const core = coreMap.get(`${ref.isoYear}-${ref.isoWeek}`)!;
     const kasEindstand = balanceMap.get(`${ref.isoYear}-${ref.isoWeek}`) ?? null;
     return { month: ref.month, row: toRow(core, kasEindstand) };
   });
