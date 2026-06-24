@@ -125,7 +125,7 @@ export default function WeekClosingForm({
       </div>
 
       <div className="grid grid-cols-2 gap-4 bg-slate-50 rounded p-3 text-sm">
-        <div>Cash totaal (DD + Eagle)</div>
+        <div>Cash totaal (DD + EA)</div>
         <div className="text-right">&euro;{core.combined.cashTotaal.toFixed(2)}</div>
         <div>- Kasuitgaven</div>
         <div className="text-right">&euro;{expensesTotal.toFixed(2)}</div>

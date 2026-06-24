@@ -12,7 +12,7 @@ export default async function JaarPage({ params }: { params: Promise<{ year: str
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">Jaaroverzicht {yearNum}</h1>
-          <p className="page-subtitle">Inkomsten en uitgaven per kwartaal, DD en Eagle samen</p>
+          <p className="page-subtitle">Inkomsten en uitgaven per kwartaal, DD en EA samen</p>
         </div>
         <div className="flex gap-2">
           <Link href={`/jaar/${yearNum - 1}`} className="btn">

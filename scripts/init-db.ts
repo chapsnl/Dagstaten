@@ -67,7 +67,7 @@ async function ensureSetting(key: string, value: string) {
 
 async function ensureSeed() {
   const ddId = await ensureBusiness("DD", "DD", 1);
-  const eagleId = await ensureBusiness("EAGLE", "Eagle", 2);
+  const eagleId = await ensureBusiness("EAGLE", "EA", 2);
 
   const kassaSpecs: [number, string, string, number][] = [
     [ddId, "D1", "D1", 1],

@@ -1,6 +1,6 @@
 # Boekhouding - dagelijkse kassa- en BTW-administratie
 
-Webapp voor het dagelijks invoeren van kassa- en PIN-omzet van DD en Eagle, met
+Webapp voor het dagelijks invoeren van kassa- en PIN-omzet van DD en EA, met
 automatische BTW-berekening (21%/9%), kasverschillen, bankafstortingen en een
 kwartaal-/jaaroverzicht voor de BTW-aangifte.
 
@@ -38,7 +38,7 @@ De data staat in een Postgres-database op Supabase.
    ```
 
    Dit zet de tabellen klaar (zie `supabase/schema.sql`) en vult de
-   standaardgegevens (DD/Eagle, kassa's D1/D2/E1/E2, 4 PIN-apparaten + 1
+   standaardgegevens (DD/EA, kassa's D1/D2/E1/E2, 4 PIN-apparaten + 1
    reserve, BTW-tarieven). Er worden geen bedragen voorgeladen.
 
 ## Starten
@@ -59,7 +59,7 @@ npm run start
 ## Schermen
 
 - **Vandaag** (`/`) - kies een dag, je komt direct in het invoerscherm.
-- **Dag-invoer** (`/dag/2026-06-22`) - per zaak (DD/Eagle) en per kassa: PIN-bedrag,
+- **Dag-invoer** (`/dag/2026-06-22`) - per zaak (DD/EA) en per kassa: PIN-bedrag,
   omzet incl. 21% en omzet incl. 9%. BTW, totaal en cash worden live berekend.
 - **Week afsluiten** (`/week/2026/26`) - overzicht van de 7 dagen, plus invoer van
   contante uitgaven (inkopen, salarissen, ...) en het werkelijk afgestorte bedrag.
@@ -77,7 +77,7 @@ npm run start
 - BTW 21% / 9% wordt uit het ingevoerde *inclusief*-bedrag gehaald:
   `btw = bedrag - bedrag / (1 + tarief/100)`.
 - Cash per kassa = (omzet incl. 21% + omzet incl. 9%) - PIN-bedrag.
-- Berekend te storten bedrag (per week) = totaal cash (DD + Eagle) - contante
+- Berekend te storten bedrag (per week) = totaal cash (DD + EA) - contante
   uitgaven die week.
 - Verschil = werkelijk afgestort bedrag - berekend bedrag. Dit maakt
   kasverschillen direct zichtbaar (in de oude Excel werd dit niet los bijgehouden).
@@ -96,7 +96,7 @@ Supabase-dashboard (**Database > Backups**), of met `pg_dump` op de
 connectiestring uit `.env.local`.
 
 De gegevens van je oude Excel-sheet zijn niet overgenomen: de app start leeg
-qua bedragen, zoals gevraagd. Alleen de structuur (DD/Eagle, kassa's, BTW-tarieven)
+qua bedragen, zoals gevraagd. Alleen de structuur (DD/EA, kassa's, BTW-tarieven)
 is voorgeladen.
 
 De "Publishable key" die je bij het aanmaken van het Supabase-project hebt

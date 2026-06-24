@@ -13,7 +13,7 @@ export default function HomePage() {
       <div>
         <h1 className="page-title">Welkom</h1>
         <p className="page-subtitle">
-          Kies een dag om de kassa&apos;s en PIN-apparaten van DD en Eagle in te vullen.
+          Kies een dag om de kassa&apos;s en PIN-apparaten van DD en EA in te vullen.
         </p>
       </div>
 
