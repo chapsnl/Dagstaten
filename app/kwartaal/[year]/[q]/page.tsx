@@ -26,7 +26,7 @@ export default async function KwartaalPage({
           </h1>
           <p className="page-subtitle">BTW-overzicht voor de aangifte</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 print:hidden">
           <Link href={`/kwartaal/${prevY}/${prevQ}`} className="btn">
             &larr; vorig kwartaal
           </Link>

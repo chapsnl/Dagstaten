@@ -76,3 +76,116 @@ table.fin th {
   background: #f1f5f9;
   text-align: left;
 }
+
+/* ─── Print / Uitdraai ─────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm 12mm;
+  }
+
+  /* Kleuren afdwingen (achtergronden + tekst) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    background: white !important;
+    font-size: 11px;
+  }
+
+  /* Navigatiebalk verbergen */
+  header {
+    display: none !important;
+  }
+
+  /* Pagina volledige breedte gebruiken */
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Minder ruimte tussen secties */
+  .space-y-6 > * + * {
+    margin-top: 10px !important;
+  }
+
+  /* Groene highlight-balk (Af te dragen BTW, Omzet, Kassaldo) */
+  .panel-highlight {
+    background-color: #047857 !important;
+    color: white !important;
+    border-radius: 6px !important;
+    padding: 10px 14px !important;
+  }
+  .panel-highlight .text-emerald-100 {
+    color: #d1fae5 !important;
+  }
+
+  /* Donker totalen-paneel onderaan */
+  .panel-dark {
+    background-color: #0f172a !important;
+    color: white !important;
+    border-radius: 6px !important;
+    padding: 10px 14px !important;
+  }
+  .panel-dark .text-slate-300 {
+    color: #cbd5e1 !important;
+  }
+
+  /* Kaarten (per maand) */
+  .card {
+    break-inside: avoid;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    overflow: visible !important;
+  }
+  .card-header {
+    background: #f1f5f9 !important;
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* Tabel: kleiner en compacter zodat alles op 1 A4 past */
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+  table.fin th,
+  table.fin td {
+    padding: 3px 5px !important;
+    font-size: 9px !important;
+    white-space: nowrap;
+  }
+  table.fin th {
+    background: #f1f5f9 !important;
+  }
+  table.fin tr.font-semibold td,
+  table.fin tr.font-semibold th {
+    background: #f8fafc !important;
+  }
+
+  /* Linkjes zien er normaal uit */
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  /* Open-week badge verbergen */
+  .text-amber-600 {
+    display: none !important;
+  }
+
+  /* Paginatitel iets compacter */
+  .page-title {
+    font-size: 16px !important;
+  }
+  .page-subtitle {
+    font-size: 11px !important;
+  }
+
+  /* Totalen-grid in panel-dark compacter */
+  .grid {
+    gap: 6px !important;
+  }
+}
